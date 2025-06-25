@@ -24,11 +24,11 @@ public class Jump : MonoBehaviour
       [Header("Ground Detection")]
     [SerializeField] private float groundCheckRadius = 0.3f;
     [SerializeField] private Vector2 groundCheckOffset = new Vector2(0, -0.5f);
-    [SerializeField] private float edgeDetectionDistance = 0.1f;    [Header("Stuck Prevention")]
-    [SerializeField] private bool enableStuckDetection = true; // Enable enhanced stuck detection
-    [SerializeField] private float stuckSpeedThreshold = 0.5f; // Speed below which player is considered potentially stuck
-    [SerializeField] private float stuckTimeThreshold = 2f; // Time player must be slow before considered stuck
-    [SerializeField] private float forceGroundCheckInterval = 1f; // How often to force ground check when stuck
+    [SerializeField] private float edgeDetectionDistance = 0.1f;    [Header("Backward Jump Settings")]
+    [SerializeField] private bool enableBackwardJump = true; // Enable backward jump with S/Down keys
+    [SerializeField] private float backwardJumpForce = 15f; // Force for backward jumps
+    [SerializeField] private float backwardJumpRatio = 0.6f; // How much backward component (0.6 = 60% backward, 40% up)
+    [SerializeField] private float backwardUpwardRatio = 0.8f; // How much upward component for backward jumps
     
     [Header("Debug")]
     // Debug visualization removed to eliminate unused variable warning
@@ -40,11 +40,14 @@ public class Jump : MonoBehaviour
     private int currentJumps = 0;
     private bool isGrounded = false;
     private bool jumpInputPressed = false;
+    private bool backwardJumpInputPressed = false;
     private float lastJumpTime = 0f; // Track when last jump was performed
+    private float lastAutoResetCheck = 0f; // Track automatic reset checks
     
     // Input Actions (for new Input System)
     private PlayerInput playerInput;
-    private InputAction jumpAction;    private void Awake()
+    private InputAction jumpAction;
+    private InputAction backwardJumpAction;    private void Awake()
     {
         // Debug: Make sure this script is on the player, not the camera
         Debug.Log($"Jump script is attached to: {this.gameObject.name}");
@@ -129,21 +132,29 @@ public class Jump : MonoBehaviour
             {
                 Debug.LogWarning("Jump action not found in PlayerInput. Using fallback input detection.");
             }
+            
+            // Try to get backward jump action (if it exists in the input actions)
+            try
+            {
+                backwardJumpAction = playerInput.actions["BackwardJump"];
+            }
+            catch
+            {
+                Debug.LogWarning("BackwardJump action not found in PlayerInput. Using fallback input detection.");
+            }
         }
     }
       private void Update()
     {
         GetJumpInput();
         
-        // Enhanced stuck detection and ground checking
-        if (enableStuckDetection)
-        {
-            CheckForStuckSituation();
-        }
-        
         if (jumpInputPressed && CanJump())
         {
-            PerformJump();
+            PerformJump(false); // Normal jump
+        }
+        else if (backwardJumpInputPressed && CanJump())
+        {
+            PerformJump(true); // Backward jump
         }
     }
     
@@ -155,38 +166,60 @@ public class Jump : MonoBehaviour
             // Apply small downward force to help with edge transitions
             rigidBody.AddForce(Vector2.down * edgeDetectionDistance, ForceMode2D.Force);
         }
-        
-        // Check for stuck prevention
-        if (enableStuckDetection && isGrounded)
-        {
-            CheckAndHandleStuck();
-        }
     }
     
     private void GetJumpInput()
     {
         jumpInputPressed = false;
+        backwardJumpInputPressed = false;
         
         // Try to use new Input System first, fallback to legacy
         if (playerInput != null && jumpAction != null)
         {
-            // New Input System
+            // New Input System - Normal jump
             jumpInputPressed = jumpAction.WasPressedThisFrame();
         }
         else if (Keyboard.current != null)
         {
-            // Fallback: Direct keyboard input for new Input System
+            // Fallback: Direct keyboard input for new Input System - Normal jump
             jumpInputPressed = Keyboard.current.spaceKey.wasPressedThisFrame;
         }
         else
         {
-            // Legacy Input System fallback
+            // Legacy Input System fallback - Normal jump
             jumpInputPressed = Input.GetKeyDown(KeyCode.Space);
+        }
+        
+        // Backward jump input detection
+        if (enableBackwardJump)
+        {
+            if (playerInput != null && backwardJumpAction != null)
+            {
+                // New Input System - Backward jump
+                backwardJumpInputPressed = backwardJumpAction.WasPressedThisFrame();
+            }
+            else if (Keyboard.current != null)
+            {
+                // Fallback: Direct keyboard input for new Input System - Backward jump
+                backwardJumpInputPressed = Keyboard.current.sKey.wasPressedThisFrame || 
+                                         Keyboard.current.downArrowKey.wasPressedThisFrame;
+            }
+            else
+            {
+                // Legacy Input System fallback - Backward jump
+                backwardJumpInputPressed = Input.GetKeyDown(KeyCode.S) || Input.GetKeyDown(KeyCode.DownArrow);
+            }
         }
     }
       private bool CanJump()
     {
-        // Check if we haven't exceeded max jumps
+        // If player is grounded, allow unlimited jumps
+        if (isGrounded)
+        {
+            return Time.time - lastJumpTime >= jumpCooldown; // Only cooldown restriction
+        }
+        
+        // If player is in the air, limit to maxJumps (3)
         if (currentJumps >= maxJumps) return false;
         
         // Check if enough time has passed since last jump (cooldown)
@@ -194,7 +227,7 @@ public class Jump : MonoBehaviour
         
         return true;
     }
-      private void PerformJump()
+      private void PerformJump(bool isBackwardJump = false)
     {
         if (rigidBody == null) return;
         
@@ -207,9 +240,9 @@ public class Jump : MonoBehaviour
             rigidBody.linearVelocity = velocity;
         }
         
-        // Calculate actual jump force based on current velocity
+        // Calculate actual jump force
+        float effectiveJumpForce = isBackwardJump ? backwardJumpForce : jumpForce;
         float currentUpwardVelocity = Mathf.Max(0f, rigidBody.linearVelocity.y);
-        float effectiveJumpForce = jumpForce;
         
         // Reduce jump force if we're already moving upward to prevent excessive height
         if (currentUpwardVelocity > 5f)
@@ -218,7 +251,17 @@ public class Jump : MonoBehaviour
         }
         
         // Calculate jump direction
-        Vector2 jumpDirection = CalculateJumpDirection();
+        Vector2 jumpDirection;
+        if (isBackwardJump)
+        {
+            // Backward jump: combine backward and upward movement
+            jumpDirection = new Vector2(-backwardJumpRatio, backwardUpwardRatio).normalized;
+        }
+        else
+        {
+            // Normal jump direction
+            jumpDirection = CalculateJumpDirection();
+        }
         
         // Apply directional jump force
         rigidBody.AddForce(jumpDirection * effectiveJumpForce, ForceMode2D.Impulse);
@@ -228,12 +271,19 @@ public class Jump : MonoBehaviour
         newVelocity.y = Mathf.Min(newVelocity.y, maxJumpVelocity);
         rigidBody.linearVelocity = newVelocity;
         
-        // Update jump tracking
-        currentJumps++;
+        // Update jump tracking - only count jumps when in the air
+        if (!isGrounded)
+        {
+            currentJumps++; // Only increment air jumps
+        }
+        // Ground jumps don't count toward the limit
+        
         lastJumpTime = Time.time;
         
         // Log jump for debugging
-        Debug.Log($"Jump performed! Direction: {jumpDirection}, Current jumps: {currentJumps}/{maxJumps}, Velocity: {rigidBody.linearVelocity}");
+        string jumpType = isBackwardJump ? "BACKWARD" : "Normal";
+        string jumpContext = isGrounded ? "GROUND" : "AIR";
+        Debug.Log($"Jump performed! Type: {jumpType}, Context: {jumpContext}, Direction: {jumpDirection}, Air jumps: {currentJumps}/{maxJumps}, Velocity: {rigidBody.linearVelocity}");
     }    /// <summary>
     /// Calculate the direction for the jump based on player movement and surface contact
     /// </summary>
@@ -368,8 +418,9 @@ public class Jump : MonoBehaviour
     public void OnGroundEnter()
     {
         isGrounded = true;
-        currentJumps = 0; // Reset jumps when touching ground
-        Debug.Log("Player landed - jumps reset");
+        int previousAirJumps = currentJumps;
+        currentJumps = 0; // Reset air jumps when touching ground
+        Debug.Log($"Player landed - air jumps reset from {previousAirJumps} to 0. Now has unlimited ground jumps. Velocity: {(rigidBody != null ? rigidBody.linearVelocity.ToString() : "N/A")}");
     }
     
     /// <summary>
@@ -595,12 +646,15 @@ public class Jump : MonoBehaviour
     private void DebugShowJumpState()
     {
         Debug.Log($"=== Jump System Debug ===");
-        Debug.Log($"Current Jumps: {currentJumps}/{maxJumps}");
         Debug.Log($"Is Grounded: {isGrounded}");
+        Debug.Log($"Air Jumps Used: {currentJumps}/{maxJumps}");
+        Debug.Log($"Ground Jumps: UNLIMITED (when grounded)");
+        Debug.Log($"Can Jump: {CanJump()}");
         Debug.Log($"Jump Force: {jumpForce}");
         Debug.Log($"Max Jump Velocity: {maxJumpVelocity}");
         Debug.Log($"Jump Cooldown: {jumpCooldown}s");
-        Debug.Log($"Reset Velocity On Jump: {resetVelocityOnJump}");        Debug.Log($"Use Directional Jump: {useDirectionalJump}");
+        Debug.Log($"Reset Velocity On Jump: {resetVelocityOnJump}");
+        Debug.Log($"Use Directional Jump: {useDirectionalJump}");
         Debug.Log($"Prevent Backward Jumps: {preventBackwardJumps}");
         Debug.Log($"Upward Jump Ratio: {upwardJumpRatio}");
         Debug.Log($"Forward Jump Ratio: {forwardJumpRatio}");
@@ -611,10 +665,15 @@ public class Jump : MonoBehaviour
         Debug.Log($"Min Surface Angle: {minSurfaceAngle}°");
         Debug.Log($"Last Jump Time: {lastJumpTime}");
         Debug.Log($"Time Since Last Jump: {Time.time - lastJumpTime:F2}s");
+        Debug.Log($"Enable Backward Jump: {enableBackwardJump}");
+        Debug.Log($"Backward Jump Force: {backwardJumpForce}");
+        Debug.Log($"Backward Jump Ratio: {backwardJumpRatio}");
+        Debug.Log($"Backward Upward Ratio: {backwardUpwardRatio}");
         if (rigidBody != null)
         {
             Debug.Log($"Current Velocity: {rigidBody.linearVelocity}");
             Debug.Log($"Predicted Jump Direction: {CalculateJumpDirection()}");
+            Debug.Log($"Predicted Backward Jump Direction: {new Vector2(-backwardJumpRatio, backwardUpwardRatio).normalized}");
             
             // Check for current surface detection
             Vector2 surfaceJump = GetSurfaceBasedJumpDirection();
@@ -626,6 +685,11 @@ public class Jump : MonoBehaviour
             {
                 Debug.Log("No surface detected for rotation jump");
             }
+            
+            // Ground detection check
+            Vector2 checkPosition = (Vector2)transform.position + groundCheckOffset;
+            Collider2D groundHit = Physics2D.OverlapCircle(checkPosition, groundCheckRadius, groundLayerMask);
+            Debug.Log($"Ground Check Result: {(groundHit != null ? groundHit.name : "No ground detected")}");
         }
     }
       // Gizmos for debugging ground check area - DISABLED
@@ -646,70 +710,21 @@ public class Jump : MonoBehaviour
         // }
     }
     
-    // Stuck detection variables
-    private float timeAtLowSpeed = 0f;
-    private float lastForceGroundCheck = 0f;
-    
-    private void CheckAndHandleStuck()
+    /// <summary>
+    /// Manually reset jump counter - useful for debugging or special situations
+    /// </summary>
+    public void ResetJumps()
     {
-        // Check if player is moving slowly
-        if (Mathf.Abs(rigidBody.linearVelocity.magnitude) < stuckSpeedThreshold)
-        {
-            timeAtLowSpeed += Time.fixedDeltaTime;
-        }
-        else
-        {
-            timeAtLowSpeed = 0f; // Reset timer if moving
-        }
-        
-        // If stuck for too long, force a ground check
-        if (timeAtLowSpeed >= stuckTimeThreshold)
-        {
-            // Perform a ground check
-            Collider2D[] colliders = Physics2D.OverlapCircleAll((Vector2)transform.position + groundCheckOffset, groundCheckRadius, groundLayerMask);
-            bool wasGrounded = isGrounded;
-            isGrounded = colliders.Length > 0;
-            
-            // If we were grounded and now we're not, we might be stuck
-            if (wasGrounded && !isGrounded)
-            {
-                // Apply a small force upwards to unstick
-                rigidBody.AddForce(Vector2.up * 5f, ForceMode2D.Impulse);
-                Debug.Log("Player unstuck - applied upward force");
-            }
-            
-            // Reset the timer
-            timeAtLowSpeed = 0f;
-        }
+        currentJumps = 0;
+        Debug.Log("Jump counter manually reset");
     }
     
     /// <summary>
-    /// Check if player is stuck and force ground detection if needed
+    /// Force a ground check - useful for debugging stuck situations
     /// </summary>
-    private void CheckForStuckSituation()
+    public void ForceGroundCheckDebug()
     {
-        if (rigidBody == null) return;
-        
-        // Check if player is moving very slowly
-        float currentSpeed = rigidBody.linearVelocity.magnitude;
-        
-        if (currentSpeed < stuckSpeedThreshold)
-        {
-            timeAtLowSpeed += Time.deltaTime;
-            
-            // If player has been stuck for a while, force a ground check
-            if (timeAtLowSpeed >= stuckTimeThreshold && 
-                Time.time - lastForceGroundCheck >= forceGroundCheckInterval)
-            {
-                ForceGroundCheck();
-                lastForceGroundCheck = Time.time;
-                Debug.Log("Player appears stuck - forced ground check performed");
-            }
-        }
-        else
-        {
-            timeAtLowSpeed = 0f; // Reset stuck timer if player is moving
-        }
+        ForceGroundCheck();
     }
     
     /// <summary>
@@ -719,7 +734,7 @@ public class Jump : MonoBehaviour
     {
         if (rigidBody == null) return;
         
-        // Create a slightly larger check area for stuck situations
+        // Create a slightly larger check area
         Vector2 checkPosition = (Vector2)transform.position + groundCheckOffset;
         float expandedRadius = groundCheckRadius * 1.5f; // 50% larger check area
         
@@ -743,7 +758,7 @@ public class Jump : MonoBehaviour
             
             foreach (Collider2D collider in nearbyColliders)
             {
-                // If touching any solid object (not the player itself), consider it ground for stuck situations
+                // If touching any solid object (not the player itself), consider it ground
                 if (collider.gameObject != this.gameObject && 
                     !collider.isTrigger &&
                     (collider.CompareTag("Ground") || collider.CompareTag("Obstacle") || collider.name.Contains("Ground")))
@@ -759,23 +774,6 @@ public class Jump : MonoBehaviour
         }
     }
     
-    /// <summary>
-    /// Manually reset jump counter - useful for debugging or special situations
-    /// </summary>
-    public void ResetJumps()
-    {
-        currentJumps = 0;
-        Debug.Log("Jump counter manually reset");
-    }
-    
-    /// <summary>
-    /// Force a ground check - useful for debugging stuck situations
-    /// </summary>
-    public void ForceGroundCheckDebug()
-    {
-        ForceGroundCheck();
-    }
-    
     [ContextMenu("Debug: Reset Jump Counter")]
     private void DebugResetJumps()
     {
@@ -788,18 +786,43 @@ public class Jump : MonoBehaviour
         ForceGroundCheckDebug();
     }
     
-    [ContextMenu("Debug: Show Stuck Detection State")]
-    private void DebugShowStuckState()
+    [ContextMenu("Debug: Test Backward Jump")]
+    private void DebugTestBackwardJump()
     {
-        Debug.Log($"=== Stuck Detection Debug ===");
-        Debug.Log($"Enable Stuck Detection: {enableStuckDetection}");
-        Debug.Log($"Current Speed: {(rigidBody != null ? rigidBody.linearVelocity.magnitude : 0f):F2}");
-        Debug.Log($"Stuck Speed Threshold: {stuckSpeedThreshold}");
-        Debug.Log($"Time At Low Speed: {timeAtLowSpeed:F2}s");
-        Debug.Log($"Stuck Time Threshold: {stuckTimeThreshold}s");
-        Debug.Log($"Last Force Ground Check: {lastForceGroundCheck:F2}");
-        Debug.Log($"Time Since Last Force Check: {Time.time - lastForceGroundCheck:F2}s");
-        Debug.Log($"Force Ground Check Interval: {forceGroundCheckInterval}s");
+        if (CanJump())
+        {
+            PerformJump(true);
+            Debug.Log("Manual backward jump triggered for testing");
+        }
+        else
+        {
+            Debug.Log("Cannot perform backward jump - check jump limits and cooldown");
+        }
+    }
+    
+    [ContextMenu("Debug: Force Jump Reset Now")]
+    private void DebugForceJumpResetNow()
+    {
+        int previousJumps = currentJumps;
+        currentJumps = 0;
+        isGrounded = true;
+        Debug.Log($"Manual jump reset: {previousJumps} -> 0. Ground state set to true.");
+    }
+    
+    [ContextMenu("Debug: Test Jump Reset Logic")]
+    private void DebugTestJumpResetLogic()
+    {
+        bool shouldReset = ShouldForceJumpReset();
+        Debug.Log($"Should force jump reset: {shouldReset}");
+        Debug.Log($"Current jumps: {currentJumps}");
+        Debug.Log($"Is grounded: {isGrounded}");
+        Debug.Log($"Velocity Y: {(rigidBody != null ? rigidBody.linearVelocity.y : 0f)}");
+        Debug.Log($"Time since last jump: {Time.time - lastJumpTime:F2}s");
+        
+        if (shouldReset)
+        {
+            ForceJumpReset();
+        }
     }
     
     [ContextMenu("QUICK FIX: Prevent All Backward Jumps")]
@@ -807,7 +830,8 @@ public class Jump : MonoBehaviour
     {
         preventBackwardJumps = true;
         preventBackwardSurfaceJumps = true;
-        Debug.Log("BACKWARD JUMP PREVENTION: Enabled for both directional and surface jumps");
+        enableBackwardJump = false;
+        Debug.Log("BACKWARD JUMP PREVENTION: Enabled for all jump types");
     }
     
     [ContextMenu("QUICK FIX: Allow All Jump Directions")]
@@ -815,6 +839,92 @@ public class Jump : MonoBehaviour
     {
         preventBackwardJumps = false;
         preventBackwardSurfaceJumps = false;
+        enableBackwardJump = true;
         Debug.Log("BACKWARD JUMP PREVENTION: Disabled - all jump directions allowed");
+    }
+    
+    [ContextMenu("Test: Backward Jump Settings - Escape Mode")]
+    private void SetEscapeBackwardJumpSettings()
+    {
+        enableBackwardJump = true;
+        backwardJumpForce = 18f; // Higher force for escaping
+        backwardJumpRatio = 0.8f; // Strong backward component
+        backwardUpwardRatio = 0.6f; // Moderate upward component
+        Debug.Log("Backward jump set to ESCAPE MODE (strong backward force for getting unstuck)");
+    }
+    
+    [ContextMenu("Test: Backward Jump Settings - Balanced Mode")]
+    private void SetBalancedBackwardJumpSettings()
+    {
+        enableBackwardJump = true;
+        backwardJumpForce = 15f; // Normal force
+        backwardJumpRatio = 0.6f; // Moderate backward component
+        backwardUpwardRatio = 0.8f; // Strong upward component
+        Debug.Log("Backward jump set to BALANCED MODE (good mix of backward and upward)");
+    }
+    
+    [ContextMenu("Test: Disable Backward Jump")]
+    private void DisableBackwardJump()
+    {
+        enableBackwardJump = false;
+        Debug.Log("Backward jump DISABLED");
+    }
+    
+    /// <summary>
+    /// Check if we should force a jump reset based on player state
+    /// </summary>
+    /// <returns>True if jump counter should be reset</returns>
+    private bool ShouldForceJumpReset()
+    {
+        // Don't reset if we're clearly in the air
+        if (rigidBody.linearVelocity.y > 2f) return false;
+        
+        // Don't reset too frequently
+        if (Time.time - lastJumpTime < 0.2f) return false;
+        
+        // Force reset if player is clearly on ground but jumps aren't reset
+        if (currentJumps > 0)
+        {
+            // Check if player is moving very slowly vertically (likely on ground)
+            if (Mathf.Abs(rigidBody.linearVelocity.y) < 0.5f)
+            {
+                // Additional ground check to be sure
+                Vector2 checkPosition = (Vector2)transform.position + groundCheckOffset;
+                Collider2D groundHit = Physics2D.OverlapCircle(checkPosition, groundCheckRadius * 1.2f, groundLayerMask);
+                
+                if (groundHit != null)
+                {
+                    return true;
+                }
+                
+                // Also check for any solid collider below the player
+                RaycastHit2D hit = Physics2D.Raycast(transform.position, Vector2.down, groundCheckRadius * 2f, groundLayerMask);
+                if (hit.collider != null)
+                {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
+    }
+    
+    /// <summary>
+    /// Force reset the jump counter when player is clearly on ground
+    /// </summary>
+    private void ForceJumpReset()
+    {
+        if (currentJumps > 0)
+        {
+            Debug.Log($"Force jump reset - was {currentJumps}, now 0. Velocity: {rigidBody.linearVelocity}");
+            currentJumps = 0;
+            
+            // Also ensure grounded state is correct
+            if (!isGrounded)
+            {
+                isGrounded = true;
+                Debug.Log("Force jump reset also set grounded state to true");
+            }
+        }
     }
 }

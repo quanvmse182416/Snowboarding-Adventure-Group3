@@ -10,9 +10,9 @@ public class ObstacleManager : MonoBehaviour
     [SerializeField] private bool autoSetupOnStart = true; // Automatically setup all obstacles at start
     [SerializeField] private string obstacleTag = "Obstacle"; // Tag to search for obstacles
       [Header("Player Speed Settings")]
-    [SerializeField] private bool enablePlayerSpeedMaintenance = true; // Enable speed maintenance for player
-    [SerializeField] private float speedBoostMultiplier = 1.0f; // Speed boost when hitting obstacles (1.0 = normal, 1.1 = 10% boost)
-    [SerializeField] private float maxAllowedSpeed = 20f; // Maximum speed to prevent flying away
+    [SerializeField] private bool enablePlayerSpeedMaintenance = false; // Enable old speed maintenance behavior (false = new speed reduction behavior)
+    [SerializeField] private float speedReductionMultiplier = 0.5f; // Speed reduction when hitting obstacles (0.5 = 50% reduction, 0.8 = 20% reduction)
+    [SerializeField] private float minSpeedAfterCollision = 2f; // Minimum speed after collision to prevent complete stop
     
     [Header("Debug")]
     [SerializeField] private bool showDebugLogs = true; // Show debug information
@@ -63,8 +63,8 @@ public class ObstacleManager : MonoBehaviour
                 
                 // Configure the script
                 newScript.SetMaintainPlayerSpeed(enablePlayerSpeedMaintenance);
-                newScript.SetSpeedBoostMultiplier(speedBoostMultiplier);
-                newScript.SetMaxAllowedSpeed(maxAllowedSpeed);
+                newScript.SetSpeedReductionMultiplier(speedReductionMultiplier);
+                newScript.SetMinSpeedAfterCollision(minSpeedAfterCollision);
                 
                 setupCount++;
                 
@@ -75,8 +75,8 @@ public class ObstacleManager : MonoBehaviour
             {
                 // Update existing script settings
                 existingScript.SetMaintainPlayerSpeed(enablePlayerSpeedMaintenance);
-                existingScript.SetSpeedBoostMultiplier(speedBoostMultiplier);
-                existingScript.SetMaxAllowedSpeed(maxAllowedSpeed);
+                existingScript.SetSpeedReductionMultiplier(speedReductionMultiplier);
+                existingScript.SetMinSpeedAfterCollision(minSpeedAfterCollision);
                 
                 if (showDebugLogs)
                     Debug.Log($"ObstacleManager: Updated existing ObstaclePlayerSpeed on {obstacle.name}");
@@ -146,12 +146,12 @@ public class ObstacleManager : MonoBehaviour
     }
     
     /// <summary>
-    /// Set the maximum allowed speed for all obstacles
+    /// Set the minimum speed after collision for all obstacles
     /// </summary>
-    /// <param name="maxSpeed">Maximum speed to prevent flying away</param>
-    public void SetMaxAllowedSpeedForAllObstacles(float maxSpeed)
+    /// <param name="minSpeed">Minimum speed after collision to prevent complete stop</param>
+    public void SetMinSpeedAfterCollisionForAllObstacles(float minSpeed)
     {
-        maxAllowedSpeed = maxSpeed;
+        minSpeedAfterCollision = minSpeed;
         
         GameObject[] obstacles = GameObject.FindGameObjectsWithTag(obstacleTag);
         
@@ -160,26 +160,26 @@ public class ObstacleManager : MonoBehaviour
             ObstaclePlayerSpeed script = obstacle.GetComponent<ObstaclePlayerSpeed>();
             if (script != null)
             {
-                script.SetMaxAllowedSpeed(maxSpeed);
+                script.SetMinSpeedAfterCollision(minSpeed);
             }
         }
         
         if (showDebugLogs)
-            Debug.Log($"ObstacleManager: Set max allowed speed to {maxSpeed} for {obstacles.Length} obstacles.");
+            Debug.Log($"ObstacleManager: Set min speed after collision to {minSpeed} for {obstacles.Length} obstacles.");
     }
       /// <summary>
-    /// Set the speed boost multiplier for all obstacles
+    /// Set the speed reduction multiplier for all obstacles
     /// </summary>
-    /// <param name="multiplier">Speed multiplier (1.0 = normal, 1.1 = 10% boost)</param>
-    public void SetSpeedBoostMultiplierForAllObstacles(float multiplier)
+    /// <param name="multiplier">Speed reduction multiplier (0.5 = 50% reduction, 0.8 = 20% reduction)</param>
+    public void SetSpeedReductionMultiplierForAllObstacles(float multiplier)
     {
-        speedBoostMultiplier = multiplier;
+        speedReductionMultiplier = multiplier;
         
         GameObject[] obstacles = GameObject.FindGameObjectsWithTag(obstacleTag);
         
         if (obstacles.Length == 0)
         {
-            Debug.LogWarning($"ObstacleManager: No obstacles found with tag '{obstacleTag}' to set speed multiplier!");
+            Debug.LogWarning($"ObstacleManager: No obstacles found with tag '{obstacleTag}' to set speed reduction multiplier!");
             return;
         }
         
@@ -189,10 +189,10 @@ public class ObstacleManager : MonoBehaviour
             ObstaclePlayerSpeed script = obstacle.GetComponent<ObstaclePlayerSpeed>();
             if (script != null)
             {
-                script.SetSpeedBoostMultiplier(multiplier);
+                script.SetSpeedReductionMultiplier(multiplier);
                 updatedCount++;
                 if (showDebugLogs)
-                    Debug.Log($"ObstacleManager: Updated speed multiplier to {multiplier} for {obstacle.name}");
+                    Debug.Log($"ObstacleManager: Updated speed reduction multiplier to {multiplier} for {obstacle.name}");
             }
             else
             {
@@ -214,8 +214,8 @@ public class ObstacleManager : MonoBehaviour
         Debug.Log($"Auto Setup On Start: {autoSetupOnStart}");
         Debug.Log($"Obstacle Tag: '{obstacleTag}'");
         Debug.Log($"Enable Player Speed Maintenance: {enablePlayerSpeedMaintenance}");
-        Debug.Log($"Speed Boost Multiplier: {speedBoostMultiplier}");
-        Debug.Log($"Max Allowed Speed: {maxAllowedSpeed}");
+        Debug.Log($"Speed Reduction Multiplier: {speedReductionMultiplier}");
+        Debug.Log($"Min Speed After Collision: {minSpeedAfterCollision}");
         Debug.Log($"Show Debug Logs: {showDebugLogs}");
         
         GameObject[] obstacles = GameObject.FindGameObjectsWithTag(obstacleTag);
@@ -241,9 +241,9 @@ public class ObstacleManager : MonoBehaviour
     [ContextMenu("Debug: Apply Current Settings to All Obstacles")]
     private void DebugApplyCurrentSettings()
     {
-        Debug.Log($"ObstacleManager: Applying current settings - Multiplier: {speedBoostMultiplier}, Max Speed: {maxAllowedSpeed}");
-        SetSpeedBoostMultiplierForAllObstacles(speedBoostMultiplier);
-        SetMaxAllowedSpeedForAllObstacles(maxAllowedSpeed);
+        Debug.Log($"ObstacleManager: Applying current settings - Speed Reduction: {speedReductionMultiplier}, Min Speed: {minSpeedAfterCollision}");
+        SetSpeedReductionMultiplierForAllObstacles(speedReductionMultiplier);
+        SetMinSpeedAfterCollisionForAllObstacles(minSpeedAfterCollision);
         SetPlayerSpeedMaintenanceForAllObstacles(enablePlayerSpeedMaintenance);
     }
 }

@@ -28,7 +28,7 @@ public class PlayerDeathHandler : MonoBehaviour
     [SerializeField] private Button retryButton; // Drag the retry button here
     [SerializeField] private Button menuButton; // Drag the menu button here
     [SerializeField] private Button quitButton; // Drag the quit button here    [Header("Scene Settings")]
-    [SerializeField] private string menuSceneName = "MainMenu"; // Name of the menu scene to load
+    [SerializeField] private string menuSceneName = "Scenes/Menu"; // Name of the menu scene to load
     
     [Header("Death Settings")]
     [SerializeField] private string[] deathTags = { "Untagged" }; // Temporary: Use existing tag for testing
@@ -280,17 +280,67 @@ public class PlayerDeathHandler : MonoBehaviour
     {
         Debug.Log("Going to menu...");
         
-        // Resume time before scene change
-        Time.timeScale = 1f;
+        // Try multiple scene loading methods
+        bool sceneLoaded = false;
         
-        // Load the menu scene
-        if (!string.IsNullOrEmpty(menuSceneName))
+        // Method 1: Try loading by build index first (most reliable)
+        try
         {
-            SceneManager.LoadScene(menuSceneName);
+            Debug.Log("Trying to load menu scene by build index 1...");
+            SceneManager.LoadScene(1); // Menu scene is at index 1
+            sceneLoaded = true;
+            Debug.Log("Successfully loaded scene by index 1");
+            // Resume time ONLY after successful scene load
+            Time.timeScale = 1f;
         }
-        else
+        catch (System.Exception e)
         {
-            Debug.LogWarning("Menu scene name is not set! Cannot load menu.");
+            Debug.LogError($"Failed to load scene by index 1: {e.Message}");
+            sceneLoaded = false;
+        }
+        
+        // Method 2: Try loading by scene name if index failed
+        if (!sceneLoaded && !string.IsNullOrEmpty(menuSceneName))
+        {
+            try
+            {
+                Debug.Log($"Trying to load scene by name: {menuSceneName}");
+                SceneManager.LoadScene(menuSceneName);
+                sceneLoaded = true;
+                Debug.Log($"Successfully loaded scene: {menuSceneName}");
+                Time.timeScale = 1f;
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Failed to load scene '{menuSceneName}': {e.Message}");
+                sceneLoaded = false;
+            }
+        }
+        
+        // Method 3: Try loading just "Menu" if full path failed
+        if (!sceneLoaded)
+        {
+            try
+            {
+                Debug.Log("Trying to load scene by name: Menu");
+                SceneManager.LoadScene("Menu");
+                sceneLoaded = true;
+                Debug.Log("Successfully loaded scene: Menu");
+                Time.timeScale = 1f;
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Failed to load scene 'Menu': {e.Message}");
+                sceneLoaded = false;
+            }
+        }
+        
+        // If all methods failed, show error and keep game paused
+        if (!sceneLoaded)
+        {
+            Debug.LogError("All scene loading methods failed! Game will remain paused.");
+            // Keep Time.timeScale = 0f so the game doesn't continue after death
+            // The player will need to restart the application
         }
     }
     

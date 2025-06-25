@@ -240,38 +240,38 @@ public class ScoreManager : MonoBehaviour
         SetupObstacleManager();
     }
       /// <summary>
-    /// Set the speed boost multiplier for all obstacles
+    /// Set the speed reduction multiplier for all obstacles
     /// </summary>
-    /// <param name="multiplier">Speed multiplier (1.0 = normal, 1.1 = 10% boost)</param>
-    public void SetObstacleSpeedMultiplier(float multiplier)
+    /// <param name="multiplier">Speed reduction multiplier (0.5 = 50% reduction, 0.8 = 20% reduction)</param>
+    public void SetObstacleSpeedReductionMultiplier(float multiplier)
     {
         ObstacleManager obstacleManager = GetComponent<ObstacleManager>();
         if (obstacleManager != null)
         {
-            obstacleManager.SetSpeedBoostMultiplierForAllObstacles(multiplier);
-            Debug.Log($"ScoreManager: Set obstacle speed multiplier to {multiplier}");
+            obstacleManager.SetSpeedReductionMultiplierForAllObstacles(multiplier);
+            Debug.Log($"ScoreManager: Set obstacle speed reduction multiplier to {multiplier}");
         }
         else
         {
-            Debug.LogWarning("ScoreManager: No ObstacleManager found to set speed multiplier");
+            Debug.LogWarning("ScoreManager: No ObstacleManager found to set speed reduction multiplier");
         }
     }
     
     /// <summary>
-    /// Set the maximum allowed speed for all obstacles
+    /// Set the minimum speed after collision for all obstacles
     /// </summary>
-    /// <param name="maxSpeed">Maximum speed to prevent flying away</param>
-    public void SetObstacleMaxSpeed(float maxSpeed)
+    /// <param name="minSpeed">Minimum speed after collision to prevent complete stop</param>
+    public void SetObstacleMinSpeed(float minSpeed)
     {
         ObstacleManager obstacleManager = GetComponent<ObstacleManager>();
         if (obstacleManager != null)
         {
-            obstacleManager.SetMaxAllowedSpeedForAllObstacles(maxSpeed);
-            Debug.Log($"ScoreManager: Set obstacle max speed to {maxSpeed}");
+            obstacleManager.SetMinSpeedAfterCollisionForAllObstacles(minSpeed);
+            Debug.Log($"ScoreManager: Set obstacle min speed to {minSpeed}");
         }
         else
         {
-            Debug.LogWarning("ScoreManager: No ObstacleManager found to set max speed");
+            Debug.LogWarning("ScoreManager: No ObstacleManager found to set min speed");
         }
     }
     
@@ -299,22 +299,22 @@ public class ScoreManager : MonoBehaviour
     [ContextMenu("Set Speed: Conservative (1.0x, 15 max)")]
     private void SetConservativeSpeed()
     {
-        SetObstacleSpeedMultiplier(1.0f);
-        SetObstacleMaxSpeed(15f);
+        SetObstacleSpeedReductionMultiplier(0.7f); // 30% reduction (conservative)
+        SetObstacleMinSpeed(3f);
     }
     
-    [ContextMenu("Set Speed: Balanced (1.05x, 20 max)")]
+    [ContextMenu("Set Speed: Balanced (0.5x reduction, 2 min)")]
     private void SetBalancedSpeed()
     {
-        SetObstacleSpeedMultiplier(1.05f);
-        SetObstacleMaxSpeed(20f);
+        SetObstacleSpeedReductionMultiplier(0.5f); // 50% reduction (balanced)
+        SetObstacleMinSpeed(2f);
     }
     
-    [ContextMenu("Set Speed: Fast (1.1x, 25 max)")]
+    [ContextMenu("Set Speed: Aggressive (0.3x reduction, 1 min)")]
     private void SetFastSpeed()
     {
-        SetObstacleSpeedMultiplier(1.1f);
-        SetObstacleMaxSpeed(25f);
+        SetObstacleSpeedReductionMultiplier(0.3f); // 70% reduction (aggressive)
+        SetObstacleMinSpeed(1f);
     }
     
     /// <summary>

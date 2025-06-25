@@ -287,7 +287,7 @@ public class PlayerDeathHandler : MonoBehaviour
         try
         {
             Debug.Log("Trying to load menu scene by build index 1...");
-            SceneManager.LoadScene(1); // Menu scene is at index 1
+            SceneManager.LoadScene(0); // Menu scene is at index 0
             sceneLoaded = true;
             Debug.Log("Successfully loaded scene by index 1");
             // Resume time ONLY after successful scene load
